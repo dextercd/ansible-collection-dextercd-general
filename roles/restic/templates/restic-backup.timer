@@ -1,0 +1,8 @@
+[Unit]
+Description=Timer for restic backups
+
+[Timer]
+{{ restic_timer_schedule }}
+
+[Install]
+WantedBy=timers.target

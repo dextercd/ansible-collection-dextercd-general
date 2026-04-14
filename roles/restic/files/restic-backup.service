@@ -1,0 +1,8 @@
+[Unit]
+Description=Perform a backup with restic
+
+[Service]
+User=root
+
+Type=exec
+ExecStart=systemd-inhibit /usr/local/bin/run-restic-backup.sh

@@ -1,0 +1,47 @@
+# restic_password: ''
+# restic_sftp_host: ''
+# restic_sftp_user: ''
+# restic_sftp_host_key: '<host> ssh-rsa AAAB3Nza...'
+
+restic_sftp_path: /restic-backup
+
+# Set this to run `restic forget --prune --keep-[hourly|last|...] <n>`
+# After running `restic backup`
+
+restic_forget_keep:
+#   last: ...
+#   hourly: ...
+#   daily: ...
+
+# Files passed to `restic backup`
+restic_system_files: |
+  /etc
+  /var
+  /home
+  /root
+  /srv
+  /usr/local/bin
+  /usr/local/sbin
+
+restic_system_files_extra: ''
+
+restic_system_excludes: |
+  /var/run
+  /var/cache
+  /var/tmp
+  /var/lib/postgresql/*/
+  /var/lib/containers/*
+
+restic_system_excludes_extra: ''
+
+# Probably want to set this to false to start out with if you're generating a
+# new SSH key or if you're planning to do a restore first.
+restic_init_repo: true
+
+restic_schedule: ''
+
+restic_timer_schedule: |
+  OnBootSec=5m
+  OnUnitActiveSec=24h
+
+restic_timer_enabled: true

@@ -1,0 +1,6 @@
+#!/bin/sh
+
+export RESTIC_REPOSITORY=sftp:restic-backup:{{ restic_sftp_path }}
+export RESTIC_PASSWORD_FILE=/etc/restic-backup/password
+
+exec restic "$@"

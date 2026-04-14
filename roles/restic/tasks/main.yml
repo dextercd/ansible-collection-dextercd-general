@@ -1,0 +1,179 @@
+---
+- name: Install Restic
+  become: true
+  ansible.builtin.package:
+    name: restic
+  tags:
+    - package
+
+- name: Restic backup directories
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/restic-backup
+    - /etc/restic-backup/setup
+    - /etc/restic-backup/teardown
+    - /etc/restic-backup/files
+    - /etc/restic-backup/excludes
+
+- name: Install Restic backup script
+  become: true
+  ansible.builtin.template:
+    src: run-restic-backup.sh
+    dest: /usr/local/bin/run-restic-backup.sh
+    owner: root
+    group: root
+    mode: '0754'
+
+- name: Make resticx script
+  become: true
+  ansible.builtin.template:
+    src: resticx
+    dest: /usr/local/bin/resticx
+    owner: root
+    group: root
+    mode: '0754'
+
+- name: Restic password file
+  become: true
+  ansible.builtin.copy:
+    content: '{{ restic_password }}'
+    dest: /etc/restic-backup/password
+    owner: root
+    group: root
+    mode: '0640'
+
+- name: Generate Restic SSH key
+  become: true
+  ansible.builtin.command:
+    cmd: ssh-keygen -t ed25519 -f /etc/restic-backup/ssh-key
+    creates: /etc/restic-backup/ssh-key
+
+- name: Fetch the Restic public key
+  ansible.builtin.fetch:
+    dest: backup
+    src: /etc/restic-backup/ssh-key.pub
+
+- name: Create .ssh directory
+  become: true
+  ansible.builtin.file:
+    path: /root/.ssh/
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: SSH configuration
+  become: true
+  ansible.builtin.blockinfile:
+    path: /root/.ssh/config
+    create: true
+    append_newline: true
+    marker: "# {mark} ANSIBLE MANAGED BLOCK backup"
+    block: |
+      Host restic-backup
+        Hostname {{ restic_sftp_host }}
+        User {{ restic_sftp_user }}
+        IdentitiesOnly yes
+        IdentityFile /etc/restic-backup/ssh-key
+        # Restict already compresses, don't spend time trying to do it again
+        Compression no
+        # Keep connection alive even when no data is being sent for a while.
+        # https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html#sftp
+        ServerAliveInterval 60
+        ServerAliveCountMax 240
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Register SSH host key
+  become: true
+  ansible.builtin.lineinfile:
+    path: /root/.ssh/known_hosts
+    create: true
+    line: "{{ restic_sftp_host_key }}"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Write standard file/exclude files
+  become: true
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - content: "{{ restic_system_files }}"
+      path: /etc/restic-backup/files/system-files
+    - content: "{{ restic_system_files_extra }}"
+      path: /etc/restic-backup/files/system-files-extra
+    - content: "{{ restic_system_excludes }}"
+      path: /etc/restic-backup/excludes/system-excludes
+    - content: "{{ restic_system_excludes_extra }}"
+      path: /etc/restic-backup/excludes/system-excludes-extra
+
+- name: Setup hooks
+  become: true
+  ansible.builtin.copy:
+    src: keep-package-log.sh
+    dest: /etc/restic-backup/setup/keep-package-log.sh
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Init repo
+  become: true
+  when: restic_init_repo
+  ansible.builtin.command:
+    cmd: resticx init
+  register: init_result
+  failed_when: "init_result.rc != 0 and 'config file already exists' not in init_result.stderr"
+  changed_when: "init_result.rc == 0"
+
+- name: Write systemd backup service file
+  become: true
+  ansible.builtin.copy:
+    src: restic-backup.service
+    dest: /etc/systemd/system/restic-backup.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: service_file
+
+- name: Write systemd backup timer file
+  become: true
+  ansible.builtin.template:
+    src: restic-backup.timer
+    dest: /etc/systemd/system/restic-backup.timer
+    owner: root
+    group: root
+    mode: '0644'
+  register: timer_file
+
+- name: systemd daemon-reload
+  become: true
+  when: service_file is changed or timer_file is changed
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Set backup timer enabled/disabled
+  become: true
+  when: restic_timer_enabled != None
+  ansible.builtin.systemd_service:
+    name: restic-backup.timer
+    enabled: "{{ restic_timer_enabled }}"
+  register: timer_enable_disable
+
+- name: Start timer for the first time
+  become: true
+  when: timer_enable_disable is changed and restic_timer_enabled
+  ansible.builtin.systemd_service:
+    name: restic-backup.timer
+    state: started
