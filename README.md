@@ -6,6 +6,8 @@ Just publishing some roles that have been useful to me.
 
 The `dextercd.general.restic` role is used to configure [Restic](https://restic.net/) to perform system backups.
 
+See [defaults/main.yml](roles/restic/defaults/main.yml) file for available configuration options.
+
 It's designed to be extensible by other roles by having those roles drop configuration files/script into predefined directories.
 
 The backup script will start by running all scripts inside `/etc/restic-backup/setup/*`.
